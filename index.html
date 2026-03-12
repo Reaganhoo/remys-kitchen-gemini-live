@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Remy's Pastel Kitchen</title>
+    <style>
+        :root {
+            --pink-soft: #ffdde1;
+            --blue-soft: #eef2f3;
+            --accent-pink: #ff9a9e;
+            --text-main: #57606f;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--pink-soft) 0%, var(--blue-soft) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            color: var(--text-main);
+        }
+        .container {
+            width: 90%;
+            max-width: 700px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 40px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        h1 { margin-bottom: 20px; color: #ff7675; }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 15px;
+            border-radius: 25px;
+            border: 2px solid var(--pink-soft);
+            outline: none;
+            font-size: 1rem;
+        }
+        button {
+            padding: 12px 25px;
+            border-radius: 25px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.2s, background 0.3s;
+        }
+        button:active { transform: scale(0.95); }
+        #sumBtn { background: var(--accent-pink); color: white; }
+        #recipeBox {
+            background: #fffafa;
+            border-radius: 20px;
+            padding: 20px;
+            text-align: left;
+            max-height: 250px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            border: 1px solid #ffe4e1;
+            white-space: pre-wrap;
+            font-size: 0.95rem;
+        }
+        .video-container {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border-radius: 25px;
+            overflow: hidden;
+            background: #2d3436;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        #timerBadge {
+            display: none;
+            background: white;
+            border: 3px solid var(--accent-pink);
+            border-radius: 20px;
+            padding: 10px 20px;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #ff7675;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        .controls { display: flex; justify-content: center; gap: 15px; }
+        #startBtn { background: #84fab0; color: #2d3436; }
+        #stopBtn { background: #ff7675; color: white; display: none; }
+        #status { font-weight: bold; margin-top: 15px; color: #a29bfe; }
+        #transcript {
+            font-style: italic;
+            background: #f1f2f6;
+            padding: 10px;
+            border-radius: 10px;
+            margin-top: 10px;
+            min-height: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍳 Remy's Kitchen</h1>
+        <div class="input-group">
+            <input type="text" id="ytUrl" placeholder="Paste YouTube Cooking Link...">
+            <button id="sumBtn">Summarize</button>
+        </div>
+        <div id="timerBadge">⏰ <span id="clock">00:00</span></div>
+        <div id="recipeBox">1. Paste a link above.<br>2. Remy will extract the recipe.<br>3. "Enter Kitchen" to start cooking with voice!</div>
+        <div class="video-container"><video id="webcam" autoplay playsinline muted></video></div>
+        <div class="controls">
+            <button id="startBtn">Enter Kitchen</button>
+            <button id="stopBtn">Exit Kitchen</button>
+        </div>
+        <p id="status">Ready!</p>
+        <div id="transcript">Remy is waiting for you...</div>
+    </div>
+
+    <script>
+        const sumBtn = document.getElementById('sumBtn'),
+              startBtn = document.getElementById('startBtn'),
+              stopBtn = document.getElementById('stopBtn'),
+              recipeBox = document.getElementById('recipeBox'),
+              status = document.getElementById('status'),
+              transcript = document.getElementById('transcript'),
+              video = document.getElementById('webcam'),
+              ytUrl = document.getElementById('ytUrl');
+
+        let ws, audioCtx, nextStartTime = 0, stream, timerInterval;
+        let currentSessionId = ""; 
+
+        // --- Summarize Logic ---
+        sumBtn.onclick = async () => {
+            if(!ytUrl.value) return alert("Please paste a URL first!");
+            status.innerText = "Remy is reading... 🧐";
+            try {
+                const response = await fetch('/summarize', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({url: ytUrl.value})
+                });
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    // This will show the actual error message from Python
+                    status.innerText = "Error: " + (data.error || "Unknown server error");
+                    recipeBox.innerText = "Error Details: " + (data.error || "Check Cloud Run logs.");
+                } else {
+                    recipeBox.innerText = data.summary;
+                    currentSessionId = data.session_id;
+                    status.innerText = "Recipe learned!";
+                }
+            } catch (e) {
+                status.innerText = "Connection failed!";
+                console.error(e);
+            }
+        };
+
+        // --- Connection Logic ---
+        startBtn.onclick = async () => {
+            if (!currentSessionId) { alert("Please summarize a recipe first!"); return; }
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-block';
+            
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 24000});
+            
+            // SECURITY FIX: Switch to WSS automatically when on HTTPS
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            ws = new WebSocket(`${protocol}://${window.location.host}/ws/remy?session_id=${currentSessionId}`);
+
+            ws.onopen = () => { status.innerText = "Remy is Live! 🟢"; startStreaming(); };
+            ws.onmessage = async (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.audio) playPcm(msg.audio);
+                if (msg.text) transcript.innerText = "Remy: " + msg.text;
+                if (msg.timer === "start") startTimer(msg.minutes);
+                if (msg.timer === "stop") stopTimer();
+            };
+        };
+
+        // --- Timer UI Logic ---
+        function startTimer(mins) {
+            clearInterval(timerInterval);
+            const badge = document.getElementById('timerBadge'), clock = document.getElementById('clock');
+            badge.style.display = 'block';
+            let sec = Math.round(mins * 60);
+            timerInterval = setInterval(() => {
+                let m = Math.floor(sec / 60), s = sec % 60;
+                clock.innerText = `${m}:${s < 10 ? '0'+s : s}`;
+                if (sec <= 0) { 
+                    clearInterval(timerInterval); 
+                    clock.innerText = "TIME UP! 🔔"; 
+                    new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play(); 
+                }
+                sec--;
+            }, 1000);
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+            document.getElementById('timerBadge').style.display = 'none';
+        }
+
+        // --- Audio/Video Stream ---
+        async function startStreaming() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+                video.srcObject = stream;
+                const inputCtx = new AudioContext({sampleRate: 16000});
+                await inputCtx.audioWorklet.addModule('processor.js');
+                const source = inputCtx.createMediaStreamSource(stream);
+                const pcmWorker = new AudioWorkletNode(inputCtx, 'pcm-processor');
+
+                pcmWorker.port.onmessage = (e) => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            "realtime_input": {
+                                "media_chunks": [{
+                                    "data": btoa(String.fromCharCode(...new Uint8Array(e.data))), 
+                                    "mime_type": "audio/pcm"
+                                }]
+                            }
+                        }));
+                    }
+                };
+                source.connect(pcmWorker);
+
+                setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 320; canvas.height = 240;
+                        canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
+                        ws.send(JSON.stringify({
+                            "realtime_input": {
+                                "media_chunks": [{
+                                    "data": canvas.toDataURL('image/jpeg', 0.5).split(',')[1], 
+                                    "mime_type": "image/jpeg"
+                                }]
+                            }
+                        }));
+                    }
+                }, 1000);
+            } catch (err) { status.innerText = "Mic/Camera denied."; }
+        }
+
+        function playPcm(base64) {
+            const binary = atob(base64), bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const int16 = new Int16Array(bytes.buffer), float32 = new Float32Array(int16.length);
+            for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768.0;
+            const buffer = audioCtx.createBuffer(1, float32.length, 24000);
+            buffer.getChannelData(0).set(float32);
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer; source.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            if (nextStartTime < now) nextStartTime = now;
+            source.start(nextStartTime); nextStartTime += buffer.duration;
+        }
+
+        stopBtn.onclick = () => location.reload();
+    </script>
+</body>
+</html>
