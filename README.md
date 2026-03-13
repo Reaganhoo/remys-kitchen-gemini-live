@@ -87,5 +87,27 @@ Remy is containerized and ready for the cloud. To deploy your own instance to Go
 - `processor.js`: AudioWorklet for real-time PCM audio processing.
 - `Dockerfile`: Configuration for containerized deployment.
 
+## 🧪 Reproducible Testing Instructions
+To verify Remy's capabilities, follow these steps once the application is running at `localhost:8080`:
+
+1. **Step 1: Recipe Extraction**
+   - Copy this YouTube URL: `https://www.youtube.com/watch?v=CTJzibi_dps&t=4s` (or any cooking video).
+   - Paste it into the input field and click "Summarize."
+   - **Expected Result:** Remy should display a summarized list of ingredients and steps in the UI.
+
+2. **Step 2: Voice Interaction**
+   - Click "Start Session" and allow Microphone/Camera access.
+   - Say: *"Hey Remy, I'm ready to cook. What's the first step?"*
+   - **Expected Result:** Remy should respond via audio with the first instruction from the extracted recipe.
+
+3. **Step 3: Tool Use (Timer)**
+   - Say: *"Remy, set a pasta timer for 10 seconds."*
+   - **Expected Result:** A visual timer should appear on the dashboard and count down. Remy should notify you when it's done.
+
+4. **Step 4: Vision Check**
+   - Hold up an ingredient (like an onion or a spatula) to your webcam.
+   - Ask: *"Remy, what am I holding right now?"*
+   - **Expected Result:** Remy should identify the object in real-time using the multimodal vision feed.
+
 ## 📝 License
 MIT License - Feel free to use this as a base for your own AI agents!
